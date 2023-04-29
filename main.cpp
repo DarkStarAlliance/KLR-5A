@@ -21,6 +21,7 @@
 #include "ArduPID.h"      // Library for PID motor control
 #include "teensystep4.h"  // Library for fast, asynchronous stepper motor control on Teensy4
 #include "RobotAxis.h"    //Custom Library for controlling motor/encoder and sensors as a single axis object
+#include "tests.h"
 using namespace TS4;      // Namespace for TeensyStep4
 
 // $$$$$$$$$$$ function prototypes
