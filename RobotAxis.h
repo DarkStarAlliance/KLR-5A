@@ -53,6 +53,8 @@ namespace TS4{
             int serialRxPin,
             double Kp,double Ki, double Kd); //constructor
 
+        void setPins(int, int, int,int,int,int,int, int);
+        void setPid(double, double, double);
         void setPinModes();        // This could just happen during object initialization, should never change at runtime
   //     void calibrateSensors();  // Run a physical calibration routine, running the axis to its endstops, recording positions
         void calibrateHomeSensor();
@@ -78,6 +80,18 @@ namespace TS4{
         void setTargetPosition(int target,int speed);
         void rotate(uint16_t speed, double override);    //use an enumerated type for direction
         void tick();
+        void setHomingSpeed(int speed);
+        void setMotor(int stepPin, int directionPin);
+         // TS4::begin(); //Begin TeensyStep4 Service
+        void setHomeSensor();
+        void setEndStop();
+        void setCalibrated(bool calibrated);
+        void setMoving(bool moving);
+        void setFault(bool fault);
+        void setEnabled(bool enabled);
+        void setFaultCode(int code);
+        int getStepPin();
+        int getdirPin();
     };//end of RobotAxis class
 
     RobotAxis::RobotAxis(int encPin, 
@@ -367,15 +381,6 @@ namespace TS4{
       enabled = true;
     }
 
-    void RobotAxis::setTargetPosition(int target){
-        targetPosition = target;
-    }
-
-    void RobotAxis::setTargetPosition(int target,int speed){
-        targetPosition = target;
-        targetSpeed = speed;
-    }
-
     void RobotAxis::updatePosition(){
           position = analogRead(encoderPin);
           stepPosition = motor.getPosition();
@@ -385,6 +390,33 @@ namespace TS4{
       motor.rotateAsync(speed);
       motor.overrideSpeed(override); //Scale motor to axis 
     }
+
+    void RobotAxis::setTargetPosition(int target){
+        targetPosition = target;
+    }
+
+    void RobotAxis::setTargetPosition(int target,int speed){
+        targetPosition = target;
+        targetSpeed = speed;
+    }
+
+    void RobotAxis::setHomingSpeed(int speed){ homingSpeed = speed;}
+    void RobotAxis::setMotor(int stepPin, int directionPin) {motor = Stepper(stepPin, directionPin);}    
+     // TS4::begin(); //Begin TeensyStep4 Service
+    void RobotAxis::setHomeSensor() {homeSensor = Bounce();}
+    void RobotAxis::setEndStop() {endStop = Bounce();}
+    void RobotAxis::setCalibrated(bool calibrate){calibrated = calibrate;}
+    void RobotAxis::setMoving(bool move) {moving = move;}
+    void RobotAxis::setFault(bool flt){fault = flt;}
+    void RobotAxis::setEnabled(bool enable) {enabled = enable;}
+    void RobotAxis::setFaultCode(int code){faultCode = code;}
+    void RobotAxis::setPins(int encPin, int endPin, int homPin,int enPin,int dirPin,int stpPin,int txPin, int rxPin){
+      encoderPin = encPin; endstopPin = endPin; homingPin = homPin; enablePin = enPin;
+      directionPin = dirPin, stepPin = stpPin, serialTxPin = txPin; serialRxPin = rxPin;
+    }
+    void RobotAxis::setPid(double p, double i, double d){
+      Kp = p; Ki = i; Kd = d;      
+    };
     /*void RobotAxis::tick(){
       updatePosition();
       positionController.compute();
@@ -410,4 +442,3 @@ namespace TS4{
 
     }*/
 }
-
