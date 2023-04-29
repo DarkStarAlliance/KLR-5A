@@ -1,4 +1,4 @@
-//#pragma once
+#pragma once
 #include "teensystep4.h"  // Library for fast, asynchronous stepper motor control on Teensy4
 using namespace TS4;      // Namespace for TeensyStep4
 #include "Arduino.h"   
@@ -33,6 +33,7 @@ class JoyStick{
     uint8_t  Deadzone; // How far off of home does joystick need to be to activate? [0-255] <--- We will want to have one for each axis, and will want to build a calibration routine
     Bounce buttonBounce; // Define debounce object for joystickButton
   public:
+    JoyStick();
     JoyStick(int pinX, int pinY, int pinZ, int buttonPin); //constructor
     void setPinModes();    
     uint16_t getHome(axis direction);
@@ -46,6 +47,7 @@ class JoyStick{
     void rotate(axis direction, RobotAxis& robAxis, uint16_t speed);    //use an enumerated type for direction
 };//end of Joystick class
 
+JoyStick::JoyStick(){}//default constructor
 JoyStick::JoyStick(int pinX, int pinY, int pinZ, int buttonPin) {
       teachPendantPinX = pinX;
       teachPendantPinY = pinY;
