@@ -26,7 +26,7 @@ int CommandReceived[] = {0xe0,0x01,0xe1};
 const byte SetZero[] = {0xe0,0x91,0x00,0x71};
 //const byte GetPosition[] = {0xe0,0x30,0x10};
 const byte GetSteps[]= {0xe0,0x33,0x13};
-const byte StopMotor[] = {0xe0,0xf7,0xd7};
+const byte StopMotor[] = {0xe1,0xf7,0xd8};
 const byte MoveMotor[] = {0xe0, 0xfd, 0x06, 0x00,0x00, 0xEE, 0x48, 0x19};
 const byte BackMotor[] = {0xe0, 0xfd, 0x86, 0x00,0x00, 0xEE, 0x48, 0x99};
 const byte SetKP[] = {0xe0, 0xa1, 0x06, 0x50, 0xd7}; //Default 0x650
@@ -53,9 +53,9 @@ int numBytes;
 tMenuCmdTxt txt1_SetZero[] = "z - Set Zero Position";
 tMenuCmdTxt txt2_GetPosition[] = "p - Get Current Position";
 tMenuCmdTxt txt3_GetSteps[] = "t - Get Current Steps";
-tMenuCmdTxt txt4_MoveMotor[] = "m - Move Motor";
+tMenuCmdTxt txt4_MoveRelative[] = "m - Move Motor Relative";
 tMenuCmdTxt txt5_StopMotor[] = "x - Stop Motor";
-tMenuCmdTxt txt6_BackMotor[] = "b - Move Motor Backwards";
+tMenuCmdTxt txt6_MoveAbsolute[] = "b - Move Motor Absolute";
 tMenuCmdTxt txt7_Status[] = "s - Status";
 tMenuCmdTxt txt8_Menu[] = "n - menu";
 
@@ -68,9 +68,9 @@ tMenuCmdTxt txt_Prompt[] = "Input:";
 void cmd1_SetZero(void);
 void cmd2_GetPosition(void);
 void cmd3_GetSteps(void);
-void cmd4_MoveMotor(void);
+void cmd4_MoveRelative(void);
 void cmd5_StopMotor(void);
-void cmd6_BackMotor(void);
+void cmd6_MoveAbsolute(void);
 void cmd7_Status(void);
 void cmd8_Menu(void);
 
@@ -81,9 +81,9 @@ stMenuCmd list[] = {
     {txt1_SetZero, 'z', cmd1_SetZero},
     {txt2_GetPosition, 'p', cmd2_GetPosition},
     {txt3_GetSteps, 't', cmd3_GetSteps},
-    {txt4_MoveMotor, 'm', cmd4_MoveMotor},
+    {txt4_MoveRelative, 'm', cmd4_MoveRelative},
     {txt5_StopMotor, 'x', cmd5_StopMotor},
-    {txt6_BackMotor, 'b', cmd6_BackMotor},
+    {txt6_MoveAbsolute, 'b', cmd6_MoveAbsolute},
     {txt7_Status, 's', cmd7_Status},  
     {txt8_Menu, 'n', cmd8_Menu}
 };
@@ -232,7 +232,7 @@ void cmd3_GetSteps(void)
   myMmuCmd.giveCmdPrompt();
 }
 
-void cmd4_MoveMotor(void)
+void cmd4_MoveRelative(void)
 {
   int8_t speed;
   float inputVal;
@@ -306,7 +306,7 @@ void cmd4_MoveMotor(void)
     }
   }
 
-  while(Serial2.available()<sizeof(CommandReceived)/sizeof(CommandReceived[0])){ //Wait for expected message length in buffer
+  /*while(Serial2.available()<sizeof(CommandReceived)/sizeof(CommandReceived[0])){ //Wait for expected message length in buffer
 
   }
   numBytes = Serial2.available();
@@ -333,7 +333,7 @@ void cmd4_MoveMotor(void)
       }
     }
   }
-
+*/
 
 
   myMmuCmd.giveCmdPrompt();
@@ -377,10 +377,110 @@ void cmd5_StopMotor(void)
 
 }
 
-void cmd6_BackMotor(void)
+void cmd6_MoveAbsolute(void)
 {
-  Serial.println("Move Motor Back 1 Turn");
-  Serial2.write(BackMotor,sizeof(BackMotor));
+int8_t speed;
+  float inputVal;
+  String aValue = "! Enter desired target in degrees";
+  union fourByte mover;
+  //                   Mtr#|Move|Sped|4 Byte Number Steps|tCHK
+  byte moveMessage[8]={0xe0,0xfd,0x86,0x00,0x00,0x00,0x00,0x00};
+  if(myMmuCmd.getStrValue(aValue) == true)
+  {
+    String aSpeed = "! Enter desired speed 0-127";
+    if(myMmuCmd.getStrValue(aSpeed)==true){
+      // Serial.println(F(""));
+      // Serial.print(F("Duration of LED switch off = "));
+        inputVal = (int32_t)round(((61000.0/360.0))*atof(aValue.c_str())); //Desired target location in degrees
+      speed = atoi(aSpeed.c_str()); //Desired target speed to location
+    }
+
+  } 
+  if(speed<0){
+    Serial.println("Only Positive Speed Values Allowed!");
+    speed = speed*-1;
+  }else{
+    if(speed>127){
+      Serial.println("Maximum speed 127!");
+      speed = 127;
+    }
+  }
+  moveMessage[2]= speed;
+  if(inputVal<0){
+    inputVal = inputVal*-1;
+    moveMessage[2] = speed + 128;
+  }
+  mover.i = inputVal;
+ 
+  Serial.println(F(""));
+  myMmuCmd.giveCmdPrompt();
+  for(int i=3;i<sizeof(moveMessage)-1;i++){
+    moveMessage[i] = mover.b[6-i];
+  }
+  uint16_t checksum =0;
+  for (int i=0; i<sizeof(moveMessage)-1;i++){
+    checksum += moveMessage[i];
+  }
+  moveMessage[7]= checksum;
+  Serial2.write(moveMessage,sizeof(moveMessage));
+ 
+ while(Serial2.available()<sizeof(CommandReceived)/sizeof(CommandReceived[0])){ //Wait for expected message length in buffer
+  }
+  numBytes = Serial2.available();
+  for(int i = 0; i<numBytes; i++){
+    shortMotorResponse[i]=Serial2.read();
+  }
+  if(shortMotorResponse[0]!=0xe0){
+    Serial.println("Unexpected Serial Response(Address)");
+    Serial.println(shortMotorResponse[0]);
+  }else{
+    if(shortMotorResponse[1]!=1){
+      if(shortMotorResponse[1]==0){
+        Serial.println("Motor Reported Action Failed!");
+      }else{
+        Serial.println("Unexpected Serial Response(Confirmation)");
+        Serial.println(shortMotorResponse[1]);
+      }
+    }else{
+      if((uint8_t)(shortMotorResponse[0]+shortMotorResponse[1])!=shortMotorResponse[2]){
+        Serial.println("Unexpected Serial Response(Checksum)");
+        Serial.println(shortMotorResponse[2]);
+      }else{
+        Serial.println("Motor Move Started...");
+      }
+    }
+  }
+
+  /*while(Serial2.available()<sizeof(CommandReceived)/sizeof(CommandReceived[0])){ //Wait for expected message length in buffer
+
+  }
+  numBytes = Serial2.available();
+  for(int i = 0; i<numBytes; i++){
+    shortMotorResponse[i]=Serial2.read();
+  }
+  if(shortMotorResponse[0]!=0xe0){
+    Serial.println("Unexpected Serial Response(Address)");
+    Serial.println(shortMotorResponse[0]);
+  }else{
+    if(shortMotorResponse[1]!=2){
+      if(shortMotorResponse[1]==0){
+        Serial.println("Motor Reported Action Failed!");
+      }else{
+        Serial.println("Unexpected Serial Response(Confirmation)");
+        Serial.println(shortMotorResponse[1]);
+      }
+    }else{
+      if((uint8_t)(shortMotorResponse[0]+shortMotorResponse[1])!=shortMotorResponse[2]){
+        Serial.println("Unexpected Serial Response(Checksum)");
+        Serial.println(shortMotorResponse[2]);
+      }else{
+        Serial.println("Motor Move Complete!");
+      }
+    }
+  }
+*/
+
+
   myMmuCmd.giveCmdPrompt();
 }
 
