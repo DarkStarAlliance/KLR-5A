@@ -1,328 +1,122 @@
 #pragma once
+#include "AS5600.h"       // Library for I2C control of AS5600 Magnetic Encoder
 #include "Arduino.h"   
 #include <Bounce2.h>      // Library for debouncing inputs 
-#include "teensystep4.h"  // Library for fast, asynchronous stepper motor control on Teensy4
-//using namespace TS4;      // Namespace for TeensyStep4
 #include "ArduPID.h"
-namespace TS4{
+#include <i2c_driver_wire.h>
+
     class RobotAxis{
       private:
-        Stepper motor;
-        int encoderPin;
-        int endstopPin;
+        uint8_t serialAddress;
+        uint8_t currentSpeed;
+        bool    moving;
+        bool    forward;
+        AS5600 encoder;
+        int16_t homeOffset;
+        int16_t encoderSteps;
+        float targetPosition;
+        uint8_t targetSpeed;
+        float minPosition;
+        float maxPosition;
+        
+        //NYI
         int homingPin;
         int enablePin;
-        int directionPin;
-        int stepPin;
-        int serialTxPin;
-        int serialRxPin;
         int maximumSpeed;
-        int homingSpeed;
-        int position;
-        int stepPosition;
-        double degrees;
-        int targetPosition;
-        int targetSpeed;
         ArduPID positionController;
         double Kp,Ki,Kd;
         double input,output,setpoint;
-        int hardTop; // The encoder value when the top stop is triggered
-        int hardBottom; // The encoder value when the bottom stop is triggered
-        int homePosition; // Center of the magnetic homing sensor range 
-        int homeWidth;
-        bool calibrated; //Home/End/Encoder sensors agree after a calibration routine
-        bool enabled; //Drive is allowed to run by safety circuit
-        bool moving; //Drive is currently moving
-        bool fault; // Axis indicates fault on one or more parameters
-        uint8_t faultCode; //Code indicating current [highest priority] fault
+        bool enabled;
+        bool calibrated;
+        bool faulted;
+        uint8_t faultCode;
+        bool atTarget;
+
 
 
 
 
       public:
-        Bounce homeSensor;
-        Bounce endStop;
         RobotAxis();
-        RobotAxis(int encoderPin, 
-            int endstopPin, 
-            int homingPin, 
-            int enablePin, 
-            int directionPin, 
-            int stepPin,
-            int serialTxPin, 
-            int serialRxPin,
-            double Kp,double Ki, double Kd); //constructor
+        RobotAxis(
+            uint8_t serialAddress,
+            int16_t homeOffset,
+            float minPosition,
+            float maxPosition
+            ); //constructor
 
-        void setPinModes();        // This could just happen during object initialization, should never change at runtime
-  //     void calibrateSensors();  // Run a physical calibration routine, running the axis to its endstops, recording positions
-        void calibrateHomeSensor();
-        void updatePosition();
-        double getHomeOffset();
-        double getPosition();
-        int getEncoderPosition();
-        int getMotorPosition();
-        int getHome();
-        int getHomeWidth();
-        int getHardTop();
-        int getHardBottom();
+        void calibrateSensors();
+        int16_t getEncoderSteps();
+        float getPositionMax();
+        float getPositionMin();
+        int16_t getHomeOffset();
         bool isCalibrated();
         bool isEnabled();
         bool isFaulted();
         bool isMoving();
         uint8_t getFault();
-        void setHome(int width);
-        void setMotorHome();
+        void setHomeOffset(int encoderSteps);
         void disable();
         void enable();
-        void setTargetPosition(int target);
-        void setTargetPosition(int target,int speed);
-        void rotate(uint16_t speed, double override);    //use an enumerated type for direction
+        void setTargetPosition(float target);
+        void setTargetPosition(float target,uint8_t speed);
+        void rotate(uint16_t speed,bool forward);    //use an enumerated type for direction
+        void moveToTarget(uint8_t speed, float target);
+        void faultReset();
+        void motorStop();
+        void updatePosition();
         void tick();
+        bool isAtTarget();
+        void TCA9548A(uint8_t bus);
     };//end of RobotAxis class
 
-    RobotAxis::RobotAxis(int encPin, 
-            int endPin, 
-            int homPin, 
-            int enPin, 
-            int dirPin, 
-            int stpPin, 
-            int txPin, 
-            int rxPin,
-            double p,
-            double i,
-            double d) {
+    RobotAxis::RobotAxis(){
 
-          encoderPin = encPin;
-          endstopPin = endPin;
-          homingPin = homPin;
-          enablePin = enPin;
-          directionPin = dirPin;
-          stepPin = stpPin;
-          serialTxPin = txPin;
-          serialRxPin = rxPin;
-          Kp = p;
-          Ki = i;
-          Kd = d;
-          homingSpeed = 5000;
-          maximumSpeed = 8000;
-          motor = Stepper(stpPin, dirPin);
-          motor.setMaxSpeed(maximumSpeed);
-          motor.setAcceleration(25000);
-        // TS4::begin(); //Begin TeensyStep4 Service
-          homeSensor = Bounce();
-          homeSensor.attach(homingPin,INPUT);
-          homeSensor.interval(25);
-          endStop = Bounce();
-          endStop.attach(endstopPin,INPUT_PULLUP);
-          endStop.interval(25);
-          calibrated = false;
-          moving = false;
-          fault = true;
-          enabled = false;
-          faultCode = 7; //Not Calibrated
-          //Check EEPROM for Hard or Soft Stop Stored Positions
-          //If valid, clear fault and change faultCode to 6 for "Unverified Calibration" 
-          positionController.begin(&input,                // input
-              &output,               // current output
-              &setpoint,             // setpoint
-              Kp,Ki,Kd          );   // P,I,D
-          positionController.setSampleTime(25);
-          positionController.start();
-          positionController.setOutputLimits(-1,1);
+    }
+
+    RobotAxis::RobotAxis(
+        uint8_t UARTaddress,
+        int16_t encoderOffset,
+        float min,
+        float max) {
+          
+        serialAddress = UARTaddress;
+        homeOffset = encoderOffset;
+        minPosition = min;
+        maxPosition = max;
+
+        maximumSpeed = 10;
+        encoder = AS5600();
+      //  Serial.println("Encoder Initialized");
+        encoder.begin();
+      //  Serial.println("Encoder Go Boom");
+        encoder.setDirection(1);
+        calibrated = false;
+        moving = false;
+        faulted = false;
+        enabled = true;
+        updatePosition();
+     //   faultCode = 0x07; //Not Calibrated
 
 
     } //end of constructor
 
-    void RobotAxis::setPinModes() { pinMode(encoderPin,INPUT);
-                                    //pinMode(endstopPin,INPUT);
-                                    //pinMode(homingPin,INPUT);
-                                    pinMode(enablePin,OUTPUT);
-                                    pinMode(directionPin,OUTPUT);
-                                    pinMode(stepPin,OUTPUT);
-                                    pinMode(serialTxPin,OUTPUT);
-                                    pinMode(serialRxPin,INPUT);
-                                    homeSensor.attach ( homingPin , INPUT ); // Attach debounce object
-                                    homeSensor.interval(10); // Define debounce interval (ms)
-                                    endStop.attach(endstopPin,INPUT_PULLUP);
-                                    endStop.interval(30);
-    } //end of setPinModes    
 
-  /* void RobotAxis::calibrateSensors(){
-      uint16_t top,bot,hom1,hom2,hom3;
-        Serial.print("Calibration Routine Begun: ");
-        homeSensor.update(); //Process debounce on axis3Home
-        endStop.update(); //Process debounce on axis3End
-          Serial.print("Top Switch First...");
-          motor.rotateAsync(-homingSpeed); //Rotate upwards at the homing speed
-          while(!endStop.fell()){ //While the endstop hasn't triggered
-            endStop.update(); //Update bounce input
-          }
-          motor.stop(); //Stop when endstop reached
-          delayMicroseconds(100); //let inputs and motors settle 100us
-          updatePositions(); //Update encoder, motor, and degree position values
-          Serial.print("Top Switch Position: ");
-          top = position; //Store top position
-          Serial.println(top);
-
-          Serial.print("Home Topside Next...");
-          homeSensor.update(); //Process home switch debounce
-          motor.rotateAsync(homingSpeed); //Rotate downwards at homing speed
-          while(!homeSensor.read()){ //While the homing switch hasn't triggered
-            homeSensor.update(); //Update bounce input
-          }
-          updatePositions();
-          hom2=position;
-          Serial.print("Homing Top: ");
-          Serial.print(hom2);
-
-          motor.rotateAsync(homingSpeed); //re-assert rotation in the downwards direction
-          while(homeSensor.read()){//While homing switch is still triggered
-            homeSensor.update(); //Update the bounce input
-          }
-          updatePositions();
-          hom3=position;
-          Serial.print(", Homing Bottom(a):");
-          Serial.println(hom3);
-          delayMicroseconds(100);
-          endStop.update();
-          Serial.println("Bottom Switch Next...");
-          motor.rotateAsync(homingSpeed); //re-assert downward rotation at homing speed
-          while(!endStop.fell()){ //while the endstop hasn't triggered
-            endStop.update(); //Update bounce processor
-          }
-          motor.stop(); //When triggered, stop motors
-          updatePositions();
-          bot = position; 
-          Serial.print("Bottom Switch: ");
-          Serial.println(bot);
-
-          Serial.println("Home Verification/Return Last...");
-          motor.rotateAsync(-homingSpeed); //Begin rotation in upwards direction at homing speed
-          while(!homeSensor.read()){ //While the homing switch is not active
-            homeSensor.update(); //Update bounce processor
-          }
-          motor.stop(); //When triggered, stop and record encoder value
-          updatePositions();
-          hom1 =(position+hom3)/2;
-          Serial.print("Home Bottom(b)");
-          Serial.println(position);
-          hom1 = (position+hom3)/2; //Set home range bottom
-          hom3 = (hom1+hom2)/2; //Set home range middle
-
-          hardTop = top;
-          hardBottom = bot;
-          homePosition = hom3;
-          homeWidth = abs(hom2-hom1);
-          
-
-          Serial.println("Homing Test Complete");
-          updatePositions();
-          motor.rotateAsync(-homingSpeed/10); //Continue upward rotation at homingSpeed/10
-          while(position<hom3){ //Wait until encoder position is at least "home middle"
-          updatePositions();
-          //Wait
-          }
-          motor.stop(); //Stop motor
-          setMotorHome(); //Set TeensyStep motor position to 0 (Also sets speed to 0)
-
-
-
-        //Verify home/encoder matched
-        while(!homeSensor.read()){ //While homing sensor is not flagged...
-          updatePositions();
-          if(endStop.read()){ //Check if endstop flagged
-            motor.stop(); // STOP! (We should be rotating towards home!)
-            if(position>homePosition){ // Check Position and begin rotating away from stops
-              motor.rotateAsync(homingSpeed);
-            }else{
-              motor.rotateAsync(-homingSpeed);
-            }
-          }else{ // Endstop not flagged
-          if(position>homePosition){ //Rotate towards home
-              motor.rotateAsync(homingSpeed);
-            }else{
-              motor.rotateAsync(-homingSpeed);
-            }
-          }
-          endStop.update();
-          homeSensor.update();
-        }
-        updatePositions();
-        if(degrees<-4 || degrees>8){ //did the sensor flag outside the accepted range?
-          Serial.println("Encoder/Homing Switch Mismatch! Check Alignment.");
-          Serial.println(position);
-          motor.overrideSpeed(0.0);
-        }else{ //Homing switch and encoder agree, test complete
-          Serial.println("Basic Homing Test Complete");
-          Serial.println(degrees); //Usually homes at -2
-          motor.overrideSpeed(0.0);
-        }
-                    
-    } // end of calibrateSensors
-  */
-    void RobotAxis::calibrateHomeSensor(){
-      endStop.update();
-      if(endStop.read()){
-        homeSensor.update();
-        if(!homeSensor.read()){
-          updatePosition();
-          motor.rotateAsync(homingSpeed);
-          if(position>0){
-            motor.overrideSpeed(1.0/10);
-          }else{
-            motor.overrideSpeed(-1.0/10);
-          }
-          homeSensor.update();
-          while(!homeSensor.read()){
-            homeSensor.update();
-          }
-          updatePosition();
-          double hometop = position;
-          homeSensor.update();
-          while(homeSensor.read()){
-            homeSensor.update();
-          }
-          motor.stop();
-          double homebottom = position;
-          targetPosition = (int)abs(hometop-homebottom)/2;
-        }
-      }
-      updatePosition();
-      
-    }
-    double RobotAxis::getHomeOffset(){
-      return ((homePosition*360.0)/1023)-180;
+    int16_t RobotAxis::getHomeOffset(){
+      return homeOffset;
     }
 
-    double RobotAxis::getPosition(){
+    int16_t RobotAxis::getEncoderSteps(){
      // updatePosition();
-      return degrees;
+      return encoderSteps;
     }
 
-    int RobotAxis::getEncoderPosition(){
-    //  updatePosition();
-      return position;
+    float RobotAxis::getPositionMax(){
+      return maxPosition;
     }
 
-    int RobotAxis::getMotorPosition(){
-     // updatePosition();
-      return stepPosition;
-    }
-
-    int RobotAxis::getHome(){
-      return homePosition;
-    }
-
-    int RobotAxis::getHomeWidth(){
-      return homeWidth;
-    }
-
-    int RobotAxis::getHardTop(){
-      return hardTop;
-    }
-
-    int RobotAxis::getHardBottom(){
-      return hardBottom;
+    float RobotAxis::getPositionMin(){
+      return minPosition;
     }
 
     bool RobotAxis::isCalibrated(){
@@ -334,32 +128,27 @@ namespace TS4{
     }
 
     bool RobotAxis :: isFaulted(){
-      return fault;
+      return faulted;
     }
 
     bool RobotAxis::isMoving(){
       return moving;
     }
 
+    bool RobotAxis::isAtTarget(){
+        return atTarget;
+    }
+
     uint8_t RobotAxis::getFault(){
       return faultCode;
     }
 
-    void RobotAxis::setHome(int width){
-      updatePosition();
-      homePosition = position;
-      homeWidth = width;
-    }
-
-    void RobotAxis::setMotorHome(){
-      //updatePositions();
-      motor.setPosition(0);
+    void RobotAxis::setHomeOffset(int encoderSteps){
+      homeOffset = encoderSteps;
     }
 
     void RobotAxis::disable(){
       enabled = false;
-      //Serial.println("DisablingAxis");
-      motor.overrideSpeed(0.0);
       return;
     }
 
@@ -367,47 +156,104 @@ namespace TS4{
       enabled = true;
     }
 
-    void RobotAxis::setTargetPosition(int target){
+    void RobotAxis::updatePosition(){
+        TCA9548A(serialAddress);
+        encoderSteps = encoder.rawAngle()-homeOffset; 
+    }
+
+    void RobotAxis::rotate(uint16_t speed,bool forwardDirection){
+      //Set local movement flags
+      moving = true;
+      forward = forwardDirection;
+      targetSpeed = speed;
+      //Prepare Serial Rotate Command
+      byte moveMessage[] = {0xe0,0xf6,0x00,0x00};
+      moveMessage[0]+=serialAddress;
+      moveMessage[2] = speed;
+      if(!forwardDirection){
+        moveMessage[2]+= 128;
+      }
+      uint16_t checksum = 0;
+      for(uint8_t i=0; i< sizeof(moveMessage)-1; i++){
+        checksum += moveMessage[i];
+      }
+      moveMessage[3] = checksum;
+      //Send Rotate Command
+      Serial2.clear();
+      Serial2.write(moveMessage,sizeof(moveMessage));
+    }
+
+    void RobotAxis::moveToTarget(uint8_t speed, float target){
+        updatePosition();
+        atTarget = false;
+        targetPosition = target;
+        forward = targetPosition > encoderSteps*AS5600_RAW_TO_DEGREES;
+        rotate(speed,forward);
+    }
+
+    void RobotAxis::setTargetPosition(float target){
         targetPosition = target;
     }
 
-    void RobotAxis::setTargetPosition(int target,int speed){
+    void RobotAxis::setTargetPosition(float target,uint8_t speed){
         targetPosition = target;
         targetSpeed = speed;
     }
 
-    void RobotAxis::updatePosition(){
-          position = analogRead(encoderPin);
-          stepPosition = motor.getPosition();
-          degrees = ((position*360.0)/1023)-180;
-    }
-    void RobotAxis::rotate(uint16_t speed,double override){
-      motor.rotateAsync(speed);
-      motor.overrideSpeed(override); //Scale motor to axis 
-    }
-    /*void RobotAxis::tick(){
-      updatePosition();
-      positionController.compute();
+    void RobotAxis::motorStop(){
+        byte stopMessage[3] = {0xe0, 0xf7, 0xd7};
 
-
-       if(abs(output)>0){
-      rotate(maximumSpeed,-output);
-    }else{
-      if(input==setpoint){
-        motor.stop();
-        Serial.print(((input/1023.0)*360)-180);
-        Serial.println(" Degrees");
-        if(input==setpoint){
-          int newTarget = random(220,511);
-          while(abs(newTarget-setpoint)<10){
-            newTarget = random(220,511);
-          }
-          setpoint = newTarget;
+        stopMessage[0] += serialAddress;
+        uint16_t checksum = 0;
+        for(uint8_t i=0; i<sizeof(stopMessage)-1; i++){
+            checksum += stopMessage[i];
         }
-      }
-      
-      }
+        stopMessage[2] = checksum;
 
-    }*/
+        Serial2.clear();
+        Serial2.write(stopMessage,sizeof(stopMessage));
+        moving = false;
+    }
+
+    void RobotAxis::tick(){
+
+        if(!enabled||faulted){
+            motorStop();
+            return;
+        }
+        if(moving){
+            updatePosition();
+            float position = encoderSteps*AS5600_RAW_TO_DEGREES;
+
+            if(position >= maxPosition || position <= minPosition){
+            Serial.print("Motor #:");
+            Serial.print(serialAddress+1);
+            Serial.print(" Position ");
+            Serial.print(position);
+            Serial.print(" Enabled:");
+            Serial.print(enabled);
+            Serial.print(" Faulted:");
+            Serial.println(faulted);
+                motorStop();
+                enabled = false;
+                faulted = true;
+                faultCode = 0x09; //Out of range
+            }
+            float difference = position - targetPosition;
+            if(difference == 0 || ((difference<0) && !forward) || ((difference >0) && forward)){
+                motorStop();
+                atTarget = true;
+            }
+        }
+
+    }
+
+
+
+void RobotAxis::TCA9548A(uint8_t bus){
+  Wire.beginTransmission(0x70);  // TCA9548A address is 0x70
+  Wire.write(1 << bus);          // send byte to select bus
+  Wire.endTransmission();
 }
+
 
