@@ -3,6 +3,7 @@
 #include "Arduino.h"   
 #include <Bounce2.h>      // Library for debouncing inputs 
 #include "ArduPID.h"
+//#include "Wire.h"
 #include <i2c_driver_wire.h>
 
     class RobotAxis{
@@ -54,6 +55,7 @@
         bool isEnabled();
         bool isFaulted();
         bool isMoving();
+        bool isForward();
         uint8_t getFault();
         void setHomeOffset(int encoderSteps);
         void disable();
@@ -71,7 +73,6 @@
     };//end of RobotAxis class
 
     RobotAxis::RobotAxis(){
-
     }
 
     RobotAxis::RobotAxis(
@@ -84,17 +85,15 @@
         homeOffset = encoderOffset;
         minPosition = min;
         maxPosition = max;
-
         maximumSpeed = 10;
         encoder = AS5600();
-      //  Serial.println("Encoder Initialized");
-        encoder.begin();
-      //  Serial.println("Encoder Go Boom");
-        encoder.setDirection(1);
+        encoder.begin(1);
+        //encoder.setDirection(1);
         calibrated = false;
         moving = false;
         faulted = false;
         enabled = true;
+        atTarget = false;
         updatePosition();
      //   faultCode = 0x07; //Not Calibrated
 
@@ -139,6 +138,10 @@
         return atTarget;
     }
 
+    bool RobotAxis::isForward(){
+        return forward;
+    }
+
     uint8_t RobotAxis::getFault(){
       return faultCode;
     }
@@ -158,6 +161,7 @@
 
     void RobotAxis::updatePosition(){
         TCA9548A(serialAddress);
+        delay(1);
         encoderSteps = encoder.rawAngle()-homeOffset; 
     }
 
@@ -187,7 +191,7 @@
         updatePosition();
         atTarget = false;
         targetPosition = target;
-        forward = targetPosition > encoderSteps*AS5600_RAW_TO_DEGREES;
+        forward = targetPosition < encoderSteps*AS5600_RAW_TO_DEGREES;
         rotate(speed,forward);
     }
 
@@ -216,13 +220,13 @@
     }
 
     void RobotAxis::tick(){
-
+        updatePosition();
         if(!enabled||faulted){
             motorStop();
             return;
         }
         if(moving){
-            updatePosition();
+
             float position = encoderSteps*AS5600_RAW_TO_DEGREES;
 
             if(position >= maxPosition || position <= minPosition){
@@ -240,7 +244,7 @@
                 faultCode = 0x09; //Out of range
             }
             float difference = position - targetPosition;
-            if(difference == 0 || ((difference<0) && !forward) || ((difference >0) && forward)){
+            if(difference == 0 || ((difference>0) && !forward) || ((difference <0) && forward)){
                 motorStop();
                 atTarget = true;
             }
