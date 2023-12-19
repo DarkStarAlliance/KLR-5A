@@ -1,53 +1,58 @@
 #include "AS5600.h"
-//#include "Wire.h"
-//#include <i2c_driver_wire.h> //Teensy-specific Replacement for Wire
 #include "RobotAxis.h"
+#include "Robot.h"
 
 elapsedMillis lastTick;
 elapsedMillis timer;
-RobotAxis axis1;
-RobotAxis axis2;
-RobotAxis axis3;
+Robot klarissa;
+uint8_t numAxes = 3;
+
+uint8_t axisAddress[]= {0,1,2,3,4};
+
+float axisBottom[]= {-45.0, //Axis1
+                      -10, //Axis2
+                      -120.0, //Axis3
+                        -2000.0, //Axis4
+                        -2000.0}; //Axis5;
+
+float axisTop[]= {45.0,    //Axis1
+                   75.0,    //Axis2
+                   10.0,   //Axis3
+                   2000.0,     //Axis4
+                   2000.0};    //Axis5;
+
+float homeOffset[]= {1893,    //Axis1
+                      1563,    //Axis2
+                      3066,    //Axis3
+                      0.0,     //Axis4
+                      0.0};    //Axis5;
+
+uint8_t defaultSpeed[] = {5,5,8,0,0};
 
 void setup(){
     Serial.begin(115200);
     Serial2.begin(115200);
-
-    axis1 = RobotAxis(0,1968,-60,60.0);
-    axis2 = RobotAxis(1,1560,-30.0,65.0);
-    axis3 = RobotAxis(2,3117,-110,30);
-    //axis1.updatePosition();
-    //axis2.updatePosition();
-    //axis3.updatePosition();
-    axis1.moveToTarget(2,0.0);
-    axis2.moveToTarget(2,0.0);
-    axis3.moveToTarget(4,0.0);
+    
+    for(int i=0;i<numAxes;i++){
+      klarissa.configureAxis(axisAddress[i],homeOffset[i],axisBottom[i],axisTop[i]);
+    }
+    klarissa.homeAxes();
 }
 
 void loop(){
-
-
     if(lastTick>1){
-
       lastTick = 0;
-      axis1.tick();
-      Serial.print(axis1.getEncoderSteps()*AS5600_RAW_TO_DEGREES);
-      Serial.print("\t");
-      axis2.tick();
-      Serial.print(axis2.getEncoderSteps()*AS5600_RAW_TO_DEGREES);
-      Serial.print("\t");
-      //Serial.println(axis2.isForward());
-      axis3.tick();
-      Serial.println(axis3.getEncoderSteps()*AS5600_RAW_TO_DEGREES);
-
+      klarissa.tick();
     }
-
-    if( (timer>10000) && axis1.isAtTarget() && axis2.isAtTarget() && axis3.isAtTarget()){
-      delay(20);
-      uint8_t newSpeed = random(3,6);
-      axis1.moveToTarget(newSpeed,random(-10,10));
-      axis2.moveToTarget(newSpeed,random(10,60));
-      axis3.moveToTarget(newSpeed+3, random(-75,-45));
-        timer = 0;
+    Serial.println(timer);
+    if( (timer>10000) && klarissa.isAtTarget()){
+      float newPose[numAxes];
+      uint8_t poseSpeed[numAxes];
+      for(int i=0; i<numAxes;i++){
+        newPose[i] = random(axisBottom[i]+15,axisTop[i]-15);
+        poseSpeed[i] = random(1,defaultSpeed[i]*2);
+      }
+      klarissa.executePose(newPose, poseSpeed);
+      timer = 0;
     }
 }

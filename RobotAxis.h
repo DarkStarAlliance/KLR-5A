@@ -51,6 +51,7 @@
         float getPositionMax();
         float getPositionMin();
         int16_t getHomeOffset();
+        void setMotorZero();
         bool isCalibrated();
         bool isEnabled();
         bool isFaulted();
@@ -162,8 +163,23 @@
     void RobotAxis::updatePosition(){
         TCA9548A(serialAddress);
         delay(1);
-        encoderSteps = encoder.rawAngle()-homeOffset; 
+        encoderSteps = encoder.rawAngle()-homeOffset;
     }
+
+    void RobotAxis::setMotorZero(){
+      byte zeroMessage[] = {0xe0, 0x91, 0x00, 0x00};
+      zeroMessage[0]+=serialAddress;
+      uint16_t checksum = 0;
+      for(uint8_t i=0; i< sizeof(zeroMessage)-1; i++){
+        checksum += zeroMessage[i];
+      }
+      zeroMessage[3] = checksum;
+      //Send Zero Command
+      Serial2.clear();
+      Serial2.write(zeroMessage,sizeof(zeroMessage));
+
+    }
+
 
     void RobotAxis::rotate(uint16_t speed,bool forwardDirection){
       //Set local movement flags
@@ -185,6 +201,7 @@
       //Send Rotate Command
       Serial2.clear();
       Serial2.write(moveMessage,sizeof(moveMessage));
+      return;
     }
 
     void RobotAxis::moveToTarget(uint8_t speed, float target){
@@ -193,6 +210,7 @@
         targetPosition = target;
         forward = targetPosition < encoderSteps*AS5600_RAW_TO_DEGREES;
         rotate(speed,forward);
+        return;
     }
 
     void RobotAxis::setTargetPosition(float target){
@@ -226,7 +244,6 @@
             return;
         }
         if(moving){
-
             float position = encoderSteps*AS5600_RAW_TO_DEGREES;
 
             if(position >= maxPosition || position <= minPosition){
