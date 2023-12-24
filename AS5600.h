@@ -9,8 +9,8 @@
 
 
 #include "Arduino.h"
-//#include "Wire.h"
-#include <i2c_driver_wire.h>
+#include "Wire.h"
+//#include <i2c_driver_wire.h>
 
 #define AS5600_LIB_VERSION              (F("0.5.0"))
 
